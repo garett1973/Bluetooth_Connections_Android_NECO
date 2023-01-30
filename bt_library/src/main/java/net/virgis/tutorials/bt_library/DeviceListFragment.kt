@@ -5,8 +5,10 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.os.Build
@@ -25,6 +27,7 @@ import net.virgis.tutorials.bt_library.databinding.FragmentListBinding
 class DeviceListFragment : Fragment(), ItemAdapter.Listener {
     private var preferences: SharedPreferences? = null
     private lateinit var itemAdapter: ItemAdapter
+    private lateinit var discoveryAdapter: ItemAdapter
     private var bAdapter: BluetoothAdapter? = null
     private lateinit var binding: FragmentListBinding
     private lateinit var btLauncher: ActivityResultLauncher<Intent>
@@ -44,6 +47,16 @@ class DeviceListFragment : Fragment(), ItemAdapter.Listener {
         binding.imBluetoothOn.setOnClickListener{
             btLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
         }
+
+        binding.imBluetoothSearch.setOnClickListener {
+            try {
+            bAdapter?.startDiscovery()
+            } catch (e: SecurityException) {
+
+            }
+        }
+
+        intentFilters()
         checkPermissions()
         initRcViews()
         registerBtLauncher()
@@ -53,8 +66,11 @@ class DeviceListFragment : Fragment(), ItemAdapter.Listener {
 
     private fun initRcViews() = with(binding) {
         rvPaired.layoutManager = LinearLayoutManager(requireContext())
-        itemAdapter = ItemAdapter(this@DeviceListFragment)
+        rvSearch.layoutManager = LinearLayoutManager(requireContext())
+        itemAdapter = ItemAdapter(this@DeviceListFragment, false)
+        discoveryAdapter = ItemAdapter(this@DeviceListFragment, true)
         rvPaired.adapter = itemAdapter
+        rvSearch.adapter = discoveryAdapter
     }
 
     private fun getPairedDevices() {
@@ -64,8 +80,7 @@ class DeviceListFragment : Fragment(), ItemAdapter.Listener {
             deviceList.forEach{ device ->
                 list.add(
                     ListItem(
-                        device.name,
-                        device.address,
+                        device,
                         preferences?.getString(BluetoothConstants.MAC, "") == device.address
                     )
                 )
@@ -138,7 +153,41 @@ class DeviceListFragment : Fragment(), ItemAdapter.Listener {
         editor?.putString(BluetoothConstants.MAC, macAddress)?.apply()
     }
 
-    override fun onClick(device: ListItem) {
-        saveMacAddress(device.mac)
+    override fun onClick(item: ListItem) {
+        saveMacAddress(item.device.address)
+    }
+
+    private val bReceiver = object : BroadcastReceiver() {
+        override fun onReceive(p0: Context?, intent: Intent?) {
+
+            if (intent?.action == BluetoothDevice.ACTION_FOUND) {
+                val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                val list = mutableSetOf<ListItem>()
+                list.addAll(discoveryAdapter.currentList)
+                if (device != null) list.add(ListItem(device, false))
+                discoveryAdapter.submitList(list.toList())
+                binding.tvEmptySearch.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+                try {
+                Log.d("MyLog", "Device: ${device?.name}")
+                } catch (e: SecurityException) {
+
+                }
+
+            } else if (intent?.action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
+                getPairedDevices()
+            } else if (intent?.action == BluetoothAdapter.ACTION_DISCOVERY_FINISHED) {
+
+            }
+        }
+
+    }
+
+    private fun intentFilters() {
+        val f1 = IntentFilter(BluetoothDevice.ACTION_FOUND)
+        val f2 = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        val f3 = IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        activity?.registerReceiver(bReceiver, f1)
+        activity?.registerReceiver(bReceiver, f2)
+        activity?.registerReceiver(bReceiver, f3)
     }
 }

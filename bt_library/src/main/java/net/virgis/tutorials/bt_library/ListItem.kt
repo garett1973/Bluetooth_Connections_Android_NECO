@@ -1,7 +1,8 @@
 package net.virgis.tutorials.bt_library
 
+import android.bluetooth.BluetoothDevice
+
 data class ListItem(
-    val name: String,
-    val mac: String,
+    val device: BluetoothDevice,
     val isChecked: Boolean
 )
